@@ -18,23 +18,12 @@ import vcr
 
 from pyVmomi import SoapStubAdapter
 from pyVmomi import vim
+from pyVmomi.VmomiSupport import GetRequestContext
 
 
 class SerializerTests(tests.VCRTestBase):
 
-    def test_simple_request_serializer(self):
-        def request_matcher(r1, r2):
-            soap_msg = ('<soapenv:Body>'
-                        '<RetrieveServiceContent xmlns="urn:vim25">'
-                        '<_this type="ServiceInstance">'
-                        'ServiceInstance'
-                        '</_this>'
-                        '</RetrieveServiceContent>'
-                        '</soapenv:Body>')
-            if soap_msg in r1.body:
-                return True
-            raise SystemError('serialization error occurred')
-
+    def _base_serialize_test(self, soap_creator, request_matcher):
         my_vcr = vcr.VCR()
         my_vcr.register_matcher('request_matcher', request_matcher)
 
@@ -43,12 +32,51 @@ class SerializerTests(tests.VCRTestBase):
                 cassette_library_dir=tests.fixtures_path,
                 record_mode='none',
                 match_on=['request_matcher']) as cass:
-            host = 'vcsa'
-            port = 443
-            stub = SoapStubAdapter(host, port)
+            stub = soap_creator()
             si = vim.ServiceInstance("ServiceInstance", stub)
             content = si.RetrieveContent()
             self.assertTrue(content is not None)
             self.assertTrue(
                 '<_this type="ServiceInstance">ServiceInstance</_this>'
                 in cass.requests[0].body)
+
+    def _body_request_matcher(self, r1, r2):
+        soap_msg = ('<soapenv:Body>'
+                    '<RetrieveServiceContent xmlns="urn:vim25">'
+                    '<_this type="ServiceInstance">'
+                    'ServiceInstance'
+                    '</_this>'
+                    '</RetrieveServiceContent>'
+                    '</soapenv:Body>')
+        if soap_msg in r1.body:
+            return True
+        raise SystemError('serialization error occurred')
+
+    def _request_context_request_matcher(self, r1, r2):
+        request_context = ('<soapenv:Header><vcSessionCookie>123456789</vcSessionCookie></soapenv:Header>')
+        if request_context in r1.body:
+            return True
+        raise SystemError('serialization error occurred')
+
+    def test_simple_request_serializer(self):
+        def soap_creator():
+            return SoapStubAdapter('vcsa', 443)
+        self._base_serialize_test(soap_creator, self._body_request_matcher)
+
+    def test_request_context_serializer_instance(self):
+        def request_matcher(r1, r2):
+            return self._request_context_request_matcher(r1, r2) and self._body_request_matcher(r1, r2)
+        def soap_creator():
+            return SoapStubAdapter('vcsa', 443, requestContext={'vcSessionCookie': '123456789'})
+        self._base_serialize_test(soap_creator, request_matcher)
+
+    def test_request_context_serializer_global(self):
+        def request_matcher(r1, r2):
+            return self._request_context_request_matcher(r1, r2) and self._body_request_matcher(r1, r2)
+        def soap_creator():
+            return SoapStubAdapter('vcsa', 443)
+        GetRequestContext()['vcSessionCookie'] = '123456789'
+        try:
+            self._base_serialize_test(soap_creator, request_matcher)
+        finally:
+            GetRequestContext().pop("vcSessionCookie")

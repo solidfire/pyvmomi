@@ -80,7 +80,9 @@ _wsdlDefMap = {}
 _dependencyMap = {}
 
 # Map top level names to xml namespaces
-_urnMap = {"vim": XMLNS_VMODL_BASE}
+_urnMap = {"vim": XMLNS_VMODL_BASE,
+           "sms": "urn:sms"
+}
 
 ## Update the dependency map
 #  Note: Must be holding the _lazyLock

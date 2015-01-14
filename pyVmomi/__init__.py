@@ -33,6 +33,10 @@ try:
 except ImportError:
    pass
 try:
+   import pyVmomi.SmsObjects
+except ImportError:
+   pass
+try:
    import pyVmomi.InternalServerObjects
 except ImportError:
    pass
